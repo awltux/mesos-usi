@@ -132,21 +132,21 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
 
       val masterInfo = parserMasterInfo(bytes.decodeString(StandardCharsets.UTF_8))
 
-      val partialUrl = "://${masterInfo.getAddress.getHostname}:${masterInfo.getAddress.getPort}"
-      val url = new URL("https${partialUrl}")
-      val healthUrl = new URL("https${partialUrl}/health")
-      val connection :HttpURLConnection = _
+      val partialUrl = "://" + masterInfo.getAddress.getHostname + ":" + masterInfo.getAddress.getPort
+      var url = new URL("https" + partialUrl)
+      var connection :HttpURLConnection = Nil.asInstanceOf[HttpURLConnection]
       try {
-        connection = (HttpURLConnection)healthUrl.openConnection()
+        val healthUrl = new URL("https" + partialUrl + "/health")
+        connection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
         connection.setRequestMethod("HEAD")
-        connection.setConnectTimeout(2000) //set timeout to 2 seconds
-        connection.setReadTimeout(2000)
+        connection.setConnectTimeout(5000) //set timeout to 2 seconds
+        connection.setReadTimeout(5000)
         connection.connect()
         // Connection success, must be https
       }
       catch {
         // Couldn't connect over https, 'assume' it's http
-        case _: IOException => url = new URL("http${partialUrl}")
+        case _: IOException => url = new URL("http" + partialUrl )
       }
       finally {
         if ( connection != null ) {
