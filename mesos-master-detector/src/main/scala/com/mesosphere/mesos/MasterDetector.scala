@@ -1,6 +1,8 @@
 package com.mesosphere.mesos
 
 import java.net.URL
+import java.net.HttpURLConnection
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletionStage
 
@@ -129,8 +131,29 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
       logger.info(s"Mesos leader data: ${bytes.decodeString(StandardCharsets.UTF_8)}")
 
       val masterInfo = parserMasterInfo(bytes.decodeString(StandardCharsets.UTF_8))
-      // TODO: how do we know it's http or https.
-      val url = new URL(s"http://${masterInfo.getAddress.getHostname}:${masterInfo.getAddress.getPort}")
+
+      val partialUrl = "://${masterInfo.getAddress.getHostname}:${masterInfo.getAddress.getPort}"
+      val url = new URL("https${partialUrl}")
+      val healthUrl = new URL("https${partialUrl}/health")
+      val connection :HttpURLConnection = _
+      try {
+        connection = (HttpURLConnection)healthUrl.openConnection()
+        connection.setRequestMethod("HEAD")
+        connection.setConnectTimeout(2000) //set timeout to 2 seconds
+        connection.setReadTimeout(2000)
+        connection.connect()
+        // Connection success, must be https
+      }
+      catch {
+        // Couldn't connect over https, 'assume' it's http
+        case _: IOException => url = new URL("http${partialUrl}")
+      }
+      finally {
+        if ( connection != null ) {
+          connection.disconnect()
+        }
+      }
+
       url
     }
 
