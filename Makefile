@@ -8,8 +8,10 @@ open_jdk_image ?= adoptopenjdk/openjdk8
 
 #Version of sbt package to install: https://dl.bintray.com/sbt/debian/sbt-$(sbt_version).deb
 # Must match entry in project/build.properties
+# TODO: Pull version from the file
 sbt_version ?= 1.3.3
 
+# Which version of Mesos to run tests against 
 mesos_version ?= 1.9.0
 
 # Docker image tag
@@ -19,8 +21,7 @@ mesos_version ?= 1.9.0
 docker_image_tag=$(open_jdk_version)-$(sbt_version)
 docker_image_name=mesos/sbt
 docker_builder=builder
-
-dockerfile_url=https://raw.githubusercontent.com/mozilla/docker-sbt/main/Dockerfile
+target_dir=target
 
 quiet := @
 sbt_debug_flag :=
@@ -46,30 +47,29 @@ list:
 .PHONY: _create-dockerfile
 _create-dockerfile:
 	$(quiet) \
-	mkdir -p $(docker_builder) &&\
-	echo 'ARG OPENJDK_TAG=$(open_jdk_version)'                                                              > $(docker_builder)/Dockerfile &&\
-	echo 'ARG OPENJDK_NAME=$(open_jdk_image)'                                                              >> $(docker_builder)/Dockerfile &&\
-	echo 'FROM $${OPENJDK_NAME}:$${OPENJDK_TAG}'                                                           >> $(docker_builder)/Dockerfile &&\
-	echo 'ARG SBT_VERSION=$(sbt_version)'                                                                  >> $(docker_builder)/Dockerfile &&\
-	echo 'ARG MESOS_VERSION=$(mesos_version)'                                                              >> $(docker_builder)/Dockerfile &&\
-	echo 'ENV DOCKER_FROM=$${OPENJDK_NAME}:$${OPENJDK_TAG}'                                                >> $(docker_builder)/Dockerfile &&\
-	echo 'ENV SBT_VERSION=$${SBT_VERSION}'                                                                 >> $(docker_builder)/Dockerfile &&\
-	echo 'ENV MESOS_VERSION=$${MESOS_VERSION}'                                                             >> $(docker_builder)/Dockerfile &&\
-	echo 'RUN \'                                                                                           >> $(docker_builder)/Dockerfile &&\
-	echo '	curl -L -o /etc/yum.repos.d/bintray-sbt-rpm.repo https://bintray.com/sbt/rpm/rpm &&\'          >> $(docker_builder)/Dockerfile &&\
-	echo '	rpm -Uvh http://repos.mesosphere.io/el/7/noarch/RPMS/mesosphere-el-repo-7-1.noarch.rpm &&\'    >> $(docker_builder)/Dockerfile &&\
-	echo '	yum install -y sbt-$${SBT_VERSION} mesos-$${MESOS_VERSION} git'                                >> $(docker_builder)/Dockerfile
+	mkdir -p $(target_dir)                                                                                 &&\
+	echo 'ARG OPENJDK_TAG=$(open_jdk_version)'                                                              > $(target_dir)/Dockerfile &&\
+	echo 'ARG OPENJDK_NAME=$(open_jdk_image)'                                                              >> $(target_dir)/Dockerfile &&\
+	echo 'FROM $${OPENJDK_NAME}:$${OPENJDK_TAG}'                                                           >> $(target_dir)/Dockerfile &&\
+	echo 'ARG SBT_VERSION=$(sbt_version)'                                                                  >> $(target_dir)/Dockerfile &&\
+	echo 'ARG MESOS_VERSION=$(mesos_version)'                                                              >> $(target_dir)/Dockerfile &&\
+	echo 'ENV DOCKER_FROM=$${OPENJDK_NAME}:$${OPENJDK_TAG}'                                                >> $(target_dir)/Dockerfile &&\
+	echo 'ENV SBT_VERSION=$${SBT_VERSION}'                                                                 >> $(target_dir)/Dockerfile &&\
+	echo 'ENV MESOS_VERSION=$${MESOS_VERSION}'                                                             >> $(target_dir)/Dockerfile &&\
+	echo 'RUN \'                                                                                           >> $(target_dir)/Dockerfile &&\
+	echo '	curl -L -o /etc/yum.repos.d/bintray-sbt-rpm.repo https://bintray.com/sbt/rpm/rpm &&\'          >> $(target_dir)/Dockerfile &&\
+	echo '	rpm -Uvh http://repos.mesosphere.io/el/7/noarch/RPMS/mesosphere-el-repo-7-1.noarch.rpm &&\'    >> $(target_dir)/Dockerfile &&\
+	echo '	yum install -y sbt-$${SBT_VERSION} mesos-$${MESOS_VERSION} git'                                >> $(target_dir)/Dockerfile 
 
 
 # Build local copy of docker image if public image doesn't exist
 .PHONY: docker-build
 docker-build: _create-dockerfile
 	$(quiet) \
-	mkdir -p $(docker_builder) &&\
 	docker build \
 		--rm \
 		--tag $(docker_image_name):$(docker_image_tag)  \
-		-f $(docker_builder)/Dockerfile \
+		-f $(target_dir)/Dockerfile \
 		.	
 
 
@@ -77,19 +77,19 @@ docker-build: _create-dockerfile
 .PHONY: _create-entrypoint
 _create-entrypoint:
 	$(quiet) \
-	mkdir -p $(docker_builder) &&\
-	echo "#!/bin/bash -eu"                                                               > $(docker_builder)/entrypoint.sh &&\
-	echo 'USER_NAME=$(docker_builder)'                                                  >> $(docker_builder)/entrypoint.sh &&\
-	echo 'echo "USER_UID=$${USER_UID}"'                                                 >> $(docker_builder)/entrypoint.sh &&\
-	echo 'echo "USER_GID=$${USER_GID}"'                                                 >> $(docker_builder)/entrypoint.sh &&\
-	echo 'if ! getent group $${USER_GID} &>/dev/null; then'                             >> $(docker_builder)/entrypoint.sh &&\
-	echo '  groupadd --non-unique -g $${USER_GID} $${USER_NAME}'                        >> $(docker_builder)/entrypoint.sh &&\
-	echo 'fi'                                                                           >> $(docker_builder)/entrypoint.sh &&\
-	echo 'if ! getent passwd $${USER_UID} &>/dev/null; then'                            >> $(docker_builder)/entrypoint.sh &&\
-	echo '  useradd --non-unique -u $${USER_UID} -g $${USER_GID} $${USER_NAME} -d /app' >> $(docker_builder)/entrypoint.sh &&\
-	echo 'fi'                                                                           >> $(docker_builder)/entrypoint.sh &&\
-	echo 'su $${USER_NAME} -c "sbt $$@"'                                                >> $(docker_builder)/entrypoint.sh &&\
-	chmod u+x $(docker_builder)/entrypoint.sh
+	mkdir -p $(target_dir) &&\
+	echo "#!/bin/bash -eu"                                                               > $(target_dir)/entrypoint.sh &&\
+	echo 'USER_NAME=$(docker_builder)'                                                  >> $(target_dir)/entrypoint.sh &&\
+	echo 'echo "USER_UID=$${USER_UID}"'                                                 >> $(target_dir)/entrypoint.sh &&\
+	echo 'echo "USER_GID=$${USER_GID}"'                                                 >> $(target_dir)/entrypoint.sh &&\
+	echo 'if ! getent group $${USER_GID} &>/dev/null; then'                             >> $(target_dir)/entrypoint.sh &&\
+	echo '  groupadd --non-unique -g $${USER_GID} $${USER_NAME}'                        >> $(target_dir)/entrypoint.sh &&\
+	echo 'fi'                                                                           >> $(target_dir)/entrypoint.sh &&\
+	echo 'if ! getent passwd $${USER_UID} &>/dev/null; then'                            >> $(target_dir)/entrypoint.sh &&\
+	echo '  useradd --non-unique -u $${USER_UID} -g $${USER_GID} $${USER_NAME} -d /app' >> $(target_dir)/entrypoint.sh &&\
+	echo 'fi'                                                                           >> $(target_dir)/entrypoint.sh &&\
+	echo 'su $${USER_NAME} -c "sbt $$@"'                                                >> $(target_dir)/entrypoint.sh &&\
+	chmod u+x $(target_dir)/entrypoint.sh
 
 
 # Clean the target directories and sbt cache
@@ -98,48 +98,66 @@ _create-entrypoint:
 deep-clean: 
 	$(quiet) \
 	sudo find . -type d -name target -prune -exec rm -r {} + &&\
-	sudo rm -rf $(docker_builder) &&\
 	echo "Cleaning complete"
 
 .PHONY: _sbt-run
-_sbt-run:
+_sbt-run: _create-entrypoint
 	$(quiet) \
+	mkdir -p $$HOME/.sbt $$HOME/.ivy2 $$HOME/.m2 &&\
 	docker run -it --rm \
-		--entrypoint "/app/$(docker_builder)/entrypoint.sh" \
-		-e USER_GID=$(shell id -g) \
-		-e USER_UID=$(shell id -u) \
+	  --entrypoint "/app/$(target_dir)/entrypoint.sh" \
+	  -e USER_GID=$(shell id -g) \
+	  -e USER_UID=$(shell id -u) \
+	  -e HOME=/home/$(docker_builder) \
 	  -v $$PWD:/app \
-	  -v $$PWD/$(docker_builder)/.sbt:/home/$(docker_builder)/.sbt \
-	  -v $$PWD/$(docker_builder)/.ivy2:/home/$(docker_builder)/.ivy2 \
-	  -v $$PWD/$(docker_builder)/.cache:/home/$(docker_builder)/.cache \
+	  -v $$HOME/:/home/$(docker_builder)/ \
+	  -v $$HOME/.sbt/:/app/.sbt/ \
+	  -v $$HOME/.ivy2/:/app/.ivy2/ \
+	  -v $$HOME/.m2/:/app/.m2/ \
 	  -w /app \
 	  $(docker_image_name):$(docker_image_tag) \
 		$(sbt_debug_flag) $(sbt_command)
 
 .PHONY: sbt-clean
-sbt-clean: _create-entrypoint
+sbt-clean:
 	$(quiet) \
 	$(MAKE) sbt_command=clean debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run
 
 .PHONY: sbt-compile
-sbt-compile: _create-entrypoint
+sbt-compile: 
 	$(quiet) \
 	$(MAKE) sbt_command=compile debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run
 
 .PHONY: sbt-test
-sbt-test: _create-entrypoint
+sbt-test:
 	$(quiet) \
 	$(MAKE) sbt_command=test debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run
 
 .PHONY: sbt-package
-sbt-package: _create-entrypoint 
+sbt-package: 
 	$(quiet) \
 	$(MAKE) sbt_command=package debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run &&\
-	targetPath=$$(ls -1 target/scala*/*.jar) &&\
-	echo "Plugin JAR file: $${targetPath}"
+	echo "JAR files created:" &&\
+	find . -type f -name *.jar | grep target/scala
+
+# Publish to current users local Maven repo: ~/.m2
+.PHONY: sbt-publishM2
+sbt-publishM2: 
+	$(quiet) \
+	$(MAKE) sbt_command=publishM2 debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run &&\
+	echo "JAR files created:" &&\
+	find . -type f -name *.jar | grep target/scala
+
+# Publish to current users local Ivy repo: ~/.ivy
+.PHONY: sbt-publishLocal
+sbt-publishLocal: 
+	$(quiet) \
+	$(MAKE) sbt_command=publishLocal debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run &&\
+	echo "JAR files created:" &&\
+	find . -type f -name *.jar | grep target/scala
 
 .PHONY: sbt-shell
-sbt-shell: _create-entrypoint
+sbt-shell:
 	$(quiet) \
 	$(MAKE) sbt_command=shell debug=$(debug) open_jdk_version=$(open_jdk_version) sbt_version=$(sbt_version) _sbt-run
 
@@ -150,9 +168,7 @@ docker-shell:
 	$(quiet) \
 	docker run -it --rm \
 	  -v $$PWD:/app \
-	  -v $$PWD/$(docker_builder)/root/.sbt:/root/.sbt \
-	  -v $$PWD/$(docker_builder)/root/.ivy2:/root/.ivy2 \
-	  -v $$PWD/$(docker_builder)/root/.cache:/root/.cache \
+	  -v $$HOME/:/home/$(docker_builder)/ \
 	  -w /app \
 	  $(docker_image_name):$(docker_image_tag) \
 		/bin/bash
