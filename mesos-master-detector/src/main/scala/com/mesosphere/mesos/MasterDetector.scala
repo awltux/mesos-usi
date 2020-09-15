@@ -133,28 +133,26 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
       val masterInfo = parserMasterInfo(bytes.decodeString(StandardCharsets.UTF_8))
 
       val partialUrl = "://" + masterInfo.getAddress.getHostname + ":" + masterInfo.getAddress.getPort
-      var url = new URL("https" + partialUrl)
-      var connection :HttpURLConnection = Nil.asInstanceOf[HttpURLConnection]
-      try {
-        val healthUrl = new URL("https" + partialUrl + "/health")
-        connection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
+      // Use Mesos 'health' endpoint to test connection
+      val healthUrl = new URL("https" + partialUrl + "/health")
+      var connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
+
+      def constructUrl(partialUrl : String) : HttpURLConnection = try {
         connection.setRequestMethod("HEAD")
-        connection.setConnectTimeout(5000) //set timeout to 2 seconds
-        connection.setReadTimeout(5000)
+        connection.setConnectTimeout(3000)
+        connection.setReadTimeout(3000)
         connection.connect()
         // Connection success, must be https
+        return new URL("https" + partialUrl)
       }
       catch {
         // Couldn't connect over https, 'assume' it's http
-        case _: IOException => url = new URL("http" + partialUrl )
-      }
-      finally {
-        if ( connection != null ) {
-          connection.disconnect()
-        }
+        case _: IOException => return new URL("http" + partialUrl )
       }
 
-      url
+      val masterUrl: URL = constructUrl(partialUrl)
+      logger.info(s"Mesos master URL: ${masterUrl}")
+      return masterUrl
     }
 
     // Ensure Zookeeper client is closed.
