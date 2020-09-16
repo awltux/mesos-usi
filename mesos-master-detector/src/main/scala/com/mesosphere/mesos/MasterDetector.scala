@@ -137,7 +137,8 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
       val healthUrl = new URL("https" + partialUrl + "/health")
       var connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
 
-      def constructUrl(partialUrl : String) : HttpURLConnection = try {
+      // Function tests https URL and returns http or https URL depending on result.
+      def constructUrl(partialUrl : String) : URL = try {
         connection.setRequestMethod("HEAD")
         connection.setConnectTimeout(3000)
         connection.setReadTimeout(3000)
