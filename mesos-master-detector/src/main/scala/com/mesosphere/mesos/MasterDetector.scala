@@ -1,10 +1,12 @@
 package com.mesosphere.mesos
 
 import java.net.URL
-import java.net.HttpURLConnection
 import java.io.IOException
+import java.net.HttpURLConnection
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletionStage
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 import com.mesosphere.usi.metrics.Metrics
 import com.mesosphere.usi.storage.zookeeper.PersistenceStore.Node
@@ -23,7 +25,8 @@ import play.api.libs.json.Reads._
 
 import scala.async.Async.{async, await}
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Await, Future, Promise}
+import scala.concurrent.duration.{Duration}
 import scala.util.{Failure, Success, Try}
 
 trait MasterDetector {
@@ -60,7 +63,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
   require(master.startsWith("zk://"), s"$master does not start with zk://")
 
   case class ZkUrl(auth: Option[String], servers: String, path: String)
-
+  
   implicit val mesosAddressRead: Reads[Protos.Address] = (
     (JsPath \ "hostname").read[String] ~
       (JsPath \ "ip").read[String] ~
@@ -119,7 +122,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
     val factory: AsyncCuratorBuilderFactory = AsyncCuratorBuilderFactory(client, clientSettings)
     val store: ZooKeeperPersistenceStore = new ZooKeeperPersistenceStore(metrics, factory, parallelism = 1)
 
-    val future = async {
+    val findMasterUrls: Future[URL] = async {
       val children = await(store.children(path, false)).get
       logger.info(s"Found Mesos leader node children $children")
       val leader = children.filter(_.startsWith("json.info")).min
@@ -130,41 +133,80 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
       val Node(_, bytes) = await(store.read(leaderPath)).get
       logger.info(s"Mesos leader data: ${bytes.decodeString(StandardCharsets.UTF_8)}")
 
+      // TODO: masterInfo should tell us whether it's using http or https
       val masterInfo = parserMasterInfo(bytes.decodeString(StandardCharsets.UTF_8))
 
-      val partialUrl = "://" + masterInfo.getAddress.getHostname + ":" + masterInfo.getAddress.getPort
-      // Use Mesos 'health' endpoint to test connection
-      val healthUrl = new URL("https" + partialUrl + "/health")
-      var connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
-
-      def constructUrl(partialUrl : String) : HttpURLConnection = try {
-        connection.setRequestMethod("HEAD")
+      // Test each protocol and see which is successful
+      val partialMasterUrl = "://" + masterInfo.getAddress.getHostname + ":" + masterInfo.getAddress.getPort
+      
+      def checkHealthUrl(masterUrl: URL): Future[URL] = Future {
+        val healthUrl = new URL(masterUrl + "/health")
+        val connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
         connection.setConnectTimeout(3000)
         connection.setReadTimeout(3000)
+        connection.setRequestMethod("HEAD")
+
+        // An Exception will indicate Failure.
         connection.connect()
-        // Connection success, must be https
-        return new URL("https" + partialUrl)
-      }
-      catch {
-        // Couldn't connect over https, 'assume' it's http
-        case _: IOException => return new URL("http" + partialUrl )
+
+        val responseCode = connection.getResponseCode
+        if (responseCode != 200) {
+          throw new IOException("Connection responseCode = " + responseCode)
+        }
+
+        masterUrl
       }
 
-      val masterUrl: URL = constructUrl(partialUrl)
-      logger.info(s"Mesos master URL: ${masterUrl}")
-      return masterUrl
+      val masterUrlList = List(
+        new URL("http"  + partialMasterUrl),
+        new URL("https" + partialMasterUrl)
+      )
+
+      // url checks to run in parallel
+      val futuresList = for ( url <- masterUrlList ) yield checkHealthUrl( url )
+
+      // Run all futures in parallel until ready
+      futuresList.map(Await.ready(_, Duration.Inf))
+
+      val p = Promise[URL]
+      val remaining = new AtomicInteger(futuresList.length)
+      val successful = new AtomicBoolean()
+
+      futuresList.foreach {
+        _.onComplete {
+          case s @ Success(_) => {
+            // Last success wins; but we should only have one
+            p tryComplete s
+            successful.set(true)
+          }   
+          case f @ Failure(_) => {
+            // Only fail if no previous Success
+            if ( (! successful.get()) && remaining.decrementAndGet() == 0) {
+              // Arbitrarily return the final failure
+              p tryComplete f
+            }
+          }   
+        }
+      }
+
+      val successUrl = p.future.value match {
+        case Some( Success( url ) ) => url
+        case _ => masterUrlList(0)
+      }
+      successUrl
+
     }
 
     // Ensure Zookeeper client is closed.
-    future.onComplete {
+    findMasterUrls.onComplete {
       case Failure(t) =>
         logger.error("Failed to get Mesos master leader node from ZK: ", t)
         client.close()
       case Success(_) =>
         client.close()
-    }
+    };
 
-    future.toJava
+    findMasterUrls.toJava
   }
 
   /** @return the parsed [[MasterInfo]] from the ZooKeeper node data. */
@@ -196,3 +238,4 @@ case class Standalone(master: String) extends MasterDetector {
 
   override def getMaster()(implicit ex: ExecutionContext): CompletionStage[URL] = Future.successful(url).toJava
 }
+
