@@ -5,16 +5,10 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletionStage
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 import com.mesosphere.usi.metrics.Metrics
 import com.mesosphere.usi.storage.zookeeper.PersistenceStore.Node
-import com.mesosphere.usi.storage.zookeeper.{
-  AsyncCuratorBuilderFactory,
-  AsyncCuratorBuilderSettings,
-  ZooKeeperPersistenceStore
-}
+import com.mesosphere.usi.storage.zookeeper.{AsyncCuratorBuilderFactory, AsyncCuratorBuilderSettings, ZooKeeperPersistenceStore}
 import com.typesafe.scalalogging.StrictLogging
 import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.RetryOneTime
@@ -25,8 +19,8 @@ import play.api.libs.json.Reads._
 
 import scala.async.Async.{async, await}
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.{ExecutionContext, Await, Future, Promise}
-import scala.concurrent.duration.{Duration}
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.duration.{Duration, SECONDS}
 import scala.util.{Failure, Success, Try}
 
 trait MasterDetector {
@@ -123,7 +117,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
     val store: ZooKeeperPersistenceStore = new ZooKeeperPersistenceStore(metrics, factory, parallelism = 1)
 
     val findMasterUrls: Future[URL] = async {
-      val children = await(store.children(path, false)).get
+      val children = await(store.children(path, absolute = false)).get
       logger.info(s"Found Mesos leader node children $children")
       val leader = children.filter(_.startsWith("json.info")).min
 
@@ -133,17 +127,20 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
       val Node(_, bytes) = await(store.read(leaderPath)).get
       logger.info(s"Mesos leader data: ${bytes.decodeString(StandardCharsets.UTF_8)}")
 
-      // TODO: masterInfo should tell us whether it's using http or https
+      // TODO: Rather than testing connections, masterInfo should tell us whether it's using http or https
       val masterInfo = parserMasterInfo(bytes.decodeString(StandardCharsets.UTF_8))
 
-      // Test each protocol and see which is successful
+      // common part of mesos URL
       val partialMasterUrl = "://" + masterInfo.getAddress.getHostname + ":" + masterInfo.getAddress.getPort
-      
+
+      // Attempt to connect to a URL
       def checkHealthUrl(masterUrl: URL): Future[URL] = Future {
+        // Use simple endpoint to check connection to Mesos Master
         val healthUrl = new URL(masterUrl + "/health")
         val connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
-        connection.setConnectTimeout(3000)
-        connection.setReadTimeout(3000)
+        connection.setConnectTimeout(10000)
+        connection.setReadTimeout(10000)
+        // Only interested in the HEADER info i.e ResponseCode
         connection.setRequestMethod("HEAD")
 
         // An Exception will indicate Failure.
@@ -151,50 +148,37 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
 
         val responseCode = connection.getResponseCode
         if (responseCode != 200) {
-          throw new IOException("Connection responseCode = " + responseCode)
+          throw new IOException("Connection to '/health' returned unexpected responseCode = " + responseCode)
         }
 
+        // return the input parameter
         masterUrl
       }
 
+      // One of these URLs should may be valid
       val masterUrlList = List(
         new URL("http"  + partialMasterUrl),
         new URL("https" + partialMasterUrl)
       )
 
-      // url checks to run in parallel
+      // Create a list of futures that check for valid url connections
       val futuresList = for ( url <- masterUrlList ) yield checkHealthUrl( url )
 
-      // Run all futures in parallel until ready
-      futuresList.map(Await.ready(_, Duration.Inf))
+      // This will hold the successful Master URL
+      var masterUrl:URL = null
+      // As each future completes, check its status and keep successful URL
+      futuresList.foreach(f => f.onComplete {
+        case Success(successfulURL) => masterUrl = successfulURL
+        // Ignore Failed connections
+        case Failure(_) => Nil
+      })
 
-      val p = Promise[URL]
-      val remaining = new AtomicInteger(futuresList.length)
-      val successful = new AtomicBoolean()
+      // Wait for all connection tests to complete
+      // Because both connections go to the same port, they should be quick to return.
+      // Add a timeout just in-case Mesos isn't listening
+      futuresList.map(f => Await.ready(f, Duration(30, SECONDS)))
 
-      futuresList.foreach {
-        _.onComplete {
-          case s @ Success(_) => {
-            // Last success wins; but we should only have one
-            p tryComplete s
-            successful.set(true)
-          }   
-          case f @ Failure(_) => {
-            // Only fail if no previous Success
-            if ( (! successful.get()) && remaining.decrementAndGet() == 0) {
-              // Arbitrarily return the final failure
-              p tryComplete f
-            }
-          }   
-        }
-      }
-
-      val successUrl = p.future.value match {
-        case Some( Success( url ) ) => url
-        case _ => masterUrlList(0)
-      }
-      successUrl
-
+      masterUrl
     }
 
     // Ensure Zookeeper client is closed.
@@ -204,7 +188,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
         client.close()
       case Success(_) =>
         client.close()
-    };
+    }
 
     findMasterUrls.toJava
   }
@@ -232,7 +216,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
 }
 
 case class Standalone(master: String) extends MasterDetector {
-  def url = if (master.startsWith("http") || master.startsWith("https")) new URL(master) else new URL(s"http://$master")
+  def url: URL = if (master.startsWith("http") || master.startsWith("https")) new URL(master) else new URL(s"http://$master")
 
   override def isValid(): Boolean = Try(url).map(_ => true).getOrElse(false)
 
