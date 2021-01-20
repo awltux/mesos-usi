@@ -120,7 +120,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
     val store: ZooKeeperPersistenceStore = new ZooKeeperPersistenceStore(metrics, factory, parallelism = 1)
 
     val future = async {
-      val children = await(store.children(path, false)).get
+      val children = await(store.children(path, absolute = false)).get
       logger.info(s"Found Mesos leader node children $children")
       val leader = children.filter(_.startsWith("json.info")).min
 
@@ -135,7 +135,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
       val partialUrl = "://" + masterInfo.getAddress.getHostname + ":" + masterInfo.getAddress.getPort
       // Use Mesos 'health' endpoint to test connection
       val healthUrl = new URL("https" + partialUrl + "/health")
-      var connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
+      val connection :HttpURLConnection = healthUrl.openConnection().asInstanceOf[HttpURLConnection]
 
       // Function tests https URL and returns http or https URL depending on result.
       def constructUrl(partialUrl : String) : URL = try {
@@ -144,16 +144,16 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
         connection.setReadTimeout(3000)
         connection.connect()
         // Connection success, must be https
-        return new URL("https" + partialUrl)
+        new URL("https" + partialUrl)
       }
       catch {
         // Couldn't connect over https, 'assume' it's http
-        case _: IOException => return new URL("http" + partialUrl )
+        case _: IOException => new URL("http" + partialUrl )
       }
 
       val masterUrl: URL = constructUrl(partialUrl)
-      logger.info(s"Mesos master URL: ${masterUrl}")
-      return masterUrl
+      logger.info(s"Mesos master URL: $masterUrl")
+      masterUrl
     }
 
     // Ensure Zookeeper client is closed.
@@ -191,7 +191,7 @@ case class Zookeeper(master: String, metrics: Metrics) extends MasterDetector wi
 }
 
 case class Standalone(master: String) extends MasterDetector {
-  def url = if (master.startsWith("http") || master.startsWith("https")) new URL(master) else new URL(s"http://$master")
+  def url: URL = if (master.startsWith("http") || master.startsWith("https")) new URL(master) else new URL(s"http://$master")
 
   override def isValid(): Boolean = Try(url).map(_ => true).getOrElse(false)
 
