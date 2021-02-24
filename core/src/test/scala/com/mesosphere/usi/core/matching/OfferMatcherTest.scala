@@ -71,7 +71,7 @@ class OfferMatcherTest extends UnitTest {
       result shouldBe Map.empty
     }
 
-    "accept offers when all of the attribute filters match with version le" in {
+    "accept offers when all of the attribute filters match with smaller version le" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -83,7 +83,7 @@ class OfferMatcherTest extends UnitTest {
       result.nonEmpty shouldBe true
     }
 
-    "accept offers when all of the attribute filters match with version le" in {
+    "accept offers when all of the attribute filters match with equal version le" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -119,7 +119,7 @@ class OfferMatcherTest extends UnitTest {
       result.nonEmpty shouldBe true
     }
 
-    "decline offers when version attribute fails with version eq" in {
+    "decline offers when version attribute fails with smaller version eq" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -131,7 +131,7 @@ class OfferMatcherTest extends UnitTest {
       result shouldBe Map.empty
     }
 
-    "decline offers when version attribute fails with version eq" in {
+    "decline offers when version attribute fails with larger version eq" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -155,7 +155,7 @@ class OfferMatcherTest extends UnitTest {
       result shouldBe Map.empty
     }
 
-    "decline offers when version attribute fails with version ne" in {
+    "decline offers when version attribute fails with smaller version ne" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -167,7 +167,7 @@ class OfferMatcherTest extends UnitTest {
       result.nonEmpty shouldBe true
     }
 
-    "decline offers when version attribute fails with version ne" in {
+    "decline offers when version attribute fails with larger version ne" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -179,7 +179,7 @@ class OfferMatcherTest extends UnitTest {
       result.nonEmpty shouldBe true
     }
 
-    "accept offers when all of the attribute filters match with version ge" in {
+    "accept offers when all of the attribute filters match with smaller version ge" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -191,7 +191,7 @@ class OfferMatcherTest extends UnitTest {
       result shouldBe Map.empty
     }
 
-    "accept offers when all of the attribute filters match with version ge" in {
+    "accept offers when all of the attribute filters match with equal version ge" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -215,7 +215,7 @@ class OfferMatcherTest extends UnitTest {
       result.nonEmpty shouldBe true
     }
 
-    "accept offers when all of the attribute filters match with version gt" in {
+    "accept offers when all of the attribute filters match with equal version gt" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
@@ -227,7 +227,7 @@ class OfferMatcherTest extends UnitTest {
       result shouldBe Map.empty
     }
 
-    "accept offers when all of the attribute filters match with version gt" in {
+    "accept offers when all of the attribute filters match with larger version gt" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
