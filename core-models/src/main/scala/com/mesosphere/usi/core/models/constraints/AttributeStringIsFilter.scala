@@ -15,8 +15,8 @@ case class AttributeStringIsFilter(attributeName: String, value: String) extends
   override def apply(offer: Protos.Offer): Boolean = {
     offer.getAttributesList.iterator.asScala.exists { attribute =>
       val attributeValue = attribute.getText.getValue()
-      val attributeSplit = attributeValue.split("?")
-      var compareResult = ( attribute.getText.getValue() == value )
+      var compareResult = ( attributeValue == value )
+      val attributeSplit = attributeValue.split("\\?")
       if ( attributeSplit.size == 2 ) {
         val splitValue = attributeSplit(0)
         val splitOperator = attributeSplit(1)
