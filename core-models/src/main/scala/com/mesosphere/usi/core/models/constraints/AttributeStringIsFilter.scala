@@ -18,8 +18,8 @@ case class AttributeStringIsFilter(attributeName: String, value: String) extends
       val attributeSplit = attributeValue.split("?")
       var compareResult = ( attribute.getText.getValue() == value )
       if ( attributeSplit.size == 2 ) {
-        val splitValue = attributeSplit[0]
-        val splitOperator = attributeSplit[1]
+        val splitValue = attributeSplit(0)
+        val splitOperator = attributeSplit(1)
         val compared = versionComp( splitValue, value)
         splitOperator match {
           case "lt" => {
