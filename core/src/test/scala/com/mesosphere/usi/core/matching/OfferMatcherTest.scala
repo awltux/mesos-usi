@@ -10,7 +10,7 @@ import com.mesosphere.usi.core.protos.ProtoBuilders.newTextAttribute
 import com.mesosphere.utils.UnitTest
 
 class OfferMatcherTest extends UnitTest {
-  val agentAttributes = List(newTextAttribute("rack", "a"), newTextAttribute("class", "baremetal"))
+  val agentAttributes = List(newTextAttribute("rack", "a"), newTextAttribute("version", "1.2.3"))
   val offer = MesosMock.createMockOffer(cpus = 4, mem = 4096, attributes = agentAttributes)
   val testPodId = PodId("mock-podId")
   def testRunTemplate(cpus: Int = Integer.MAX_VALUE, mem: Int = 256): RunTemplate = {
@@ -28,7 +28,7 @@ class OfferMatcherTest extends UnitTest {
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
         HomeRegionFilter,
-        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("class", "vm"))
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "0.0.0"))
       )
 
       val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
@@ -40,7 +40,199 @@ class OfferMatcherTest extends UnitTest {
         testPodId,
         testRunTemplate(cpus = 1, mem = 256),
         HomeRegionFilter,
-        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("class", "baremetal"))
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "accept offers when all of the attribute filters match with version lt" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.2?lt"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "decline offers when version attribute fails with version lt" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?lt"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "accept offers when all of the attribute filters match with version le" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.2?le"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "accept offers when all of the attribute filters match with version le" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?le"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "decline offers when version attribute fails with version le" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.4?le"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "accept offers when all of the attribute filters match with version eq" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?eq"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "decline offers when version attribute fails with version eq" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.2?eq"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "decline offers when version attribute fails with version eq" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.4?eq"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "accept offers when all of the attribute filters match with version ne" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?ne"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "decline offers when version attribute fails with version ne" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.2?ne"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "decline offers when version attribute fails with version ne" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.4?ne"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "accept offers when all of the attribute filters match with version ge" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.2?ge"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "accept offers when all of the attribute filters match with version ge" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?ge"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "decline offers when version attribute fails with version ge" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.4?ge"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
+    "accept offers when all of the attribute filters match with version gt" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?gt"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "accept offers when all of the attribute filters match with version gt" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.4?gt"))
       )
 
       val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))

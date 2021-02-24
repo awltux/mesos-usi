@@ -60,5 +60,5 @@ case class AttributeStringIsFilter(attributeName: String, value: String) extends
     go(pairs)
   }
 
-  override def description: String = s"attribute ${attributeName}'s string value is exactly '${value}'"
+  override def description: String = s"Looking for ${attributeName}'='${value}'"
 }
