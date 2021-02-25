@@ -47,6 +47,42 @@ class OfferMatcherTest extends UnitTest {
       result.nonEmpty shouldBe true
     }
 
+    "decline offers when version attribute fails with non version eq" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "notVersionString?eq"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "decline offers when version attribute fails with version default operator eq" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.2?badOperatorUsesEq"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result shouldBe Map.empty
+    }
+
+    "accept offers when all of the attribute filters match with version default operator eq" in {
+      val nonMatchingPodSpec = RunningPodSpec(
+        testPodId,
+        testRunTemplate(cpus = 1, mem = 256),
+        HomeRegionFilter,
+        List(AttributeStringIsFilter("rack", "a"), AttributeStringIsFilter("version", "1.2.3?badOperatorUsesEq"))
+      )
+
+      val result = offerMatcher.matchOffer(offer, List(nonMatchingPodSpec))
+      result.nonEmpty shouldBe true
+    }
+
     "accept offers when all of the attribute filters match with version lt" in {
       val nonMatchingPodSpec = RunningPodSpec(
         testPodId,

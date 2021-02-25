@@ -12,15 +12,29 @@ import com.typesafe.scalalogging.StrictLogging
   * @param value The value of the attribute.
   */
 case class AttributeStringIsFilter(attributeName: String, value: String) extends AgentFilter with StrictLogging {
+  // preCompiles RegEx
+  val VersionStringRegEx = """\d(\.\d)*""".r
+  
   override def apply(offer: Protos.Offer): Boolean = {
-    offer.getAttributesList.iterator.asScala.exists { attribute =>
-      val attributeValue = attribute.getText.getValue()
-      var compareResult = ( attributeValue == value )
-      val attributeSplit = attributeValue.split("\\?")
-      if ( attributeSplit.size == 2 ) {
-        val splitValue = attributeSplit(0)
-        val splitOperator = attributeSplit(1)
-        val compared = versionComp( splitValue, value)
+    offer.getAttributesList.iterator.asScala.exists { attributeOffered =>
+      val attributeOfferedValue = attributeOffered.getText.getValue()
+      // is offered attribute a version string e.g. 1.2.3
+      val isOfferedVersionString = VersionStringRegEx.unapplySeq(attributeOfferedValue).isDefined
+      // operator filter allows version strings to be compared e.g. 1.2.3?gt
+      val valueSplit = value.split("\\?")
+      val splitValue = valueSplit(0)
+      // is plugins attribute a version string e.g. 1.2.3
+      val isValueVersionString = VersionStringRegEx.unapplySeq(splitValue).isDefined
+
+      var compareResult = ( attributeOfferedValue == value )
+      // Only use operator logic if:
+      //    not already matched
+      //    offered values is a version string
+      //    filter value can be split by ?
+      //    split filter value is a version string
+      if ( !compareResult && isOfferedVersionString && valueSplit.size == 2 && isValueVersionString ) {
+        val splitOperator = valueSplit(1)
+        val compared = versionComp( splitValue, attributeOfferedValue)
         splitOperator match {
           case "lt" => {
             compareResult = ( compared == -1 )
@@ -40,15 +54,24 @@ case class AttributeStringIsFilter(attributeName: String, value: String) extends
           case "gt" =>  {
             compareResult = ( compared == 1 )
           }
-          // Invalid Operator, default to direct value compare
+          case unknownOperator =>  {
+            logger.debug(
+              s"Invalid attribute operator '${unknownOperator}'. Defaulting to 'eq'"
+            )
+            compareResult = ( compared == 0 )
+          }
         }
       }
-      attribute.getName() == attributeName &&
-      attribute.getType == Protos.Value.Type.TEXT &&
-      compareResult
+      attributeOffered.getName() == attributeName &&
+          attributeOffered.getType == Protos.Value.Type.TEXT &&
+          compareResult
     }
   }
 
+  // Compare version strings:
+  //    ( a <  b )  => -1
+  //    ( a == b )  =>  0
+  //    ( a >  b )  =>  1
   def versionComp(a: String, b: String) = {
     def nums(s: String) = s.split("\\.").map(_.toInt) 
     val pairs = nums(a).zipAll(nums(b), 0, 0).toList
@@ -60,5 +83,5 @@ case class AttributeStringIsFilter(attributeName: String, value: String) extends
     go(pairs)
   }
 
-  override def description: String = s"Looking for ${attributeName}'='${value}'"
+  override def description: String = s"Looking for ${attributeName}='${value}'"
 }
